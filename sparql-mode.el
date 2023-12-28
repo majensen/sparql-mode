@@ -93,6 +93,12 @@ evaluation."
   :group 'sparql
   :type 'boolean)
 
+(defcustom sparql-default-use-auto-prefixes nil
+  "Non-nil means add to each query PREFIX statements for each auto 
+prefix defined in `sparql-auto-prefixes`."
+  :group 'sparql
+  :type 'boolean)
+
 (defcustom sparql-post-string nil
   "What is added to the front of the query string.
 For queries this is query=, for updates this needs to be set to update=.
@@ -106,11 +112,23 @@ If nil the code below will use query=."
   :type 'hook
   :group 'sparql)
 
+(defcustom sparql-auto-prefixes
+  '(("rdf:"."<http://www.w3.org/1999/02/22-rdf-syntax-ns#>" )
+    ("rdfs:"."<http://www.w3.org/2000/01/rdf-schema#>")
+    ("skos:"."<http://www.w3.org/2004/02/skos/core#>")
+    ("owl:"."<http://www.w3.org/2002/07/owl#>"))
+  "Prefix-namespace pairs added to all queries."
+  :type '(alist :key-type (string) :value-type (string))
+  :group 'sparql)
+
 (defvar-local sparql-results-buffer nil)
 (defvar-local sparql-base-url nil)
 (defvar-local sparql-format nil)
 
+(defvar-local sparql-use-auto-prefixes nil)
+
 (defvar sparql-base-url-history (list sparql-default-base-url))
+(defvar sqarql-last-query (string))
 
 (defun sparql-set-base-url (new-url)
   "Set the base URL for queries."
@@ -195,6 +213,16 @@ SPARQL query."
          ad-do-it)
      ad-do-it)))
 
+(defun sparql-create-prefix-stmts ()
+  "Create PREFIX statments from auto-prefix alist."
+  (let* ((str ""))
+    (dolist (pair sparql-auto-prefixes)
+      (setq str
+	    (concat str
+		    (concat "PREFIX " (car pair) " " (cdr pair) "\n")
+		    )))
+    str))
+
 (defun sparql-execute-query (query url format synch)
   "Submit the given `query' string to the endpoint at the given
 `url'.  `sparql-execute-query' inserts the result of the query
@@ -203,6 +231,9 @@ synchronously otherwise it is asynchronously.  `format' specifies
 the return format of the response from the server. Note: This
 uses the the mime accept header to set the format and not all
 sparql endpoints expect that."
+  (if sparql-use-auto-prefixes
+      (setq query (concat (sparql-create-prefix-stmts) query)))
+  (setq sparql-last-query query)
   (let* ((url-mime-accept-string (or format (sparql-get-format)))
         (url-request-method "POST")
 	(url-request-command (if sparql-post-string sparql-post-string "query="))
@@ -237,6 +268,9 @@ asynchronously."
         (sparql-result-mode)))
     (with-current-buffer sparql-results-buffer
       (let ((buffer-read-only nil))
+	(if (not (boundp 'sparql-use-auto-prefixes))
+	    (setq sparql-use-auto-prefixes
+		  sparql-default-use-auto-prefixes))
         (delete-region (point-min) (point-max))
         (sparql-execute-query query url format synch)))
     (view-buffer-other-window sparql-results-buffer)
