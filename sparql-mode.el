@@ -112,12 +112,18 @@ If nil the code below will use query=."
   :type 'hook
   :group 'sparql)
 
+(defcustom sparql-clear-results-between-queries t
+  "Clear results buffer before running each query."
+  :type 'boolean
+  :group 'sparql)
+
 (defcustom sparql-auto-prefixes
   '(("rdf:"."<http://www.w3.org/1999/02/22-rdf-syntax-ns#>" )
     ("rdfs:"."<http://www.w3.org/2000/01/rdf-schema#>")
     ("skos:"."<http://www.w3.org/2004/02/skos/core#>")
     ("owl:"."<http://www.w3.org/2002/07/owl#>"))
-  "Prefix-namespace pairs added to all queries."
+  "Prefix-namespace pairs added to all queries (if 
+`sparql-use-auto-prefixes' is set)."
   :type '(alist :key-type (string) :value-type (string))
   :group 'sparql)
 
@@ -125,7 +131,9 @@ If nil the code below will use query=."
 (defvar-local sparql-base-url nil)
 (defvar-local sparql-format nil)
 
-(defvar-local sparql-use-auto-prefixes nil)
+(defvar-local sparql-use-auto-prefixes nil
+  "Send PREFIX statements describing `sparql-auto-prefixes' automatically
+ with each query.")
 
 (defvar sparql-base-url-history (list sparql-default-base-url))
 (defvar sqarql-last-query (string))
@@ -214,7 +222,7 @@ SPARQL query."
      ad-do-it)))
 
 (defun sparql-create-prefix-stmts ()
-  "Create PREFIX statments from auto-prefix alist."
+  "Create PREFIX statments from `sparql-auto-prefixes' alist."
   (let* ((str ""))
     (dolist (pair sparql-auto-prefixes)
       (setq str
@@ -249,6 +257,36 @@ sparql endpoints expect that."
           (sparql-handle-results nil result-buffer))
       (url-retrieve url #'sparql-handle-results (list result-buffer)))))
 
+(defun sparql-replace-uri-with-prefix-region (begin end)
+  "Replace known uris (from `sparql-auto-prefixes') with 
+their prefixes in region."
+  (interactive "r")
+  (let* ((endm (make-marker)))
+    (set-marker endm end)
+    (save-excursion
+      (dolist (pair sparql-auto-prefixes)
+	(goto-char begin)
+	(while (search-forward (cdr pair) endm t)
+	  (replace-match (car pair)))
+	))
+    (set-marker endm nil)
+    ))
+
+(defun sparql-replace-prefix-with-uri-region (begin end)
+  "Replace known uris (from `sparql-auto-prefixes') with 
+their prefixes in region."
+  (interactive "r")
+  (let* ((endm (make-marker)))
+    (set-marker endm end)
+    (save-excursion
+      (dolist (pair sparql-auto-prefixes)
+	(goto-char begin)
+	(while (search-forward (car pair) endm t)
+	  (replace-match (cdr pair)))
+	))
+    (set-marker endm nil)
+    ))
+
 (defun sparql-query-region (&optional synch)
   "Submit the active region as a query to a SPARQL HTTP endpoint.
 If the region is not active, use the whole buffer.  If a prefix
@@ -271,7 +309,8 @@ asynchronously."
 	(if (not (boundp 'sparql-use-auto-prefixes))
 	    (setq sparql-use-auto-prefixes
 		  sparql-default-use-auto-prefixes))
-        (delete-region (point-min) (point-max))
+	(if sparql-clear-results-between-queries
+	    (delete-region (point-min) (point-max)))
         (sparql-execute-query query url format synch)))
     (view-buffer-other-window sparql-results-buffer)
     (other-window -1)))
