@@ -112,31 +112,33 @@ If nil the code below will use query=."
   :type 'hook
   :group 'sparql)
 
-(defcustom sparql-clear-results-between-queries t
+(defcustom sparql-default-overwrite-results t
   "Clear results buffer before running each query."
   :type 'boolean
   :group 'sparql)
 
 (defcustom sparql-auto-prefixes
-  '(("rdf:"."<http://www.w3.org/1999/02/22-rdf-syntax-ns#>" )
-    ("rdfs:"."<http://www.w3.org/2000/01/rdf-schema#>")
-    ("skos:"."<http://www.w3.org/2004/02/skos/core#>")
-    ("owl:"."<http://www.w3.org/2002/07/owl#>"))
+  '(("rdf:"."http://www.w3.org/1999/02/22-rdf-syntax-ns#" )
+    ("rdfs:"."http://www.w3.org/2000/01/rdf-schema#")
+    ("skos:"."http://www.w3.org/2004/02/skos/core#")
+    ("owl:"."http://www.w3.org/2002/07/owl#"))
   "Prefix-namespace pairs added to all queries (if 
-`sparql-use-auto-prefixes' is set)."
+`sparql-use-auto-prefixes' is set). Don't forget the colon."
   :type '(alist :key-type (string) :value-type (string))
   :group 'sparql)
 
 (defvar-local sparql-results-buffer nil)
 (defvar-local sparql-base-url nil)
 (defvar-local sparql-format nil)
-
-(defvar-local sparql-use-auto-prefixes nil
-  "Send PREFIX statements describing `sparql-auto-prefixes' automatically
+(defvar-local sparql-overwrite-results sparql-default-overwrite-results
+  "If t, overwrite results (i.e., clear results buffer) for each query.")
+(defvar-local sparql-use-auto-prefixes sparql-default-use-auto-prefixes
+  "If t, send PREFIX statements describing `sparql-auto-prefixes' automatically
  with each query.")
 
 (defvar sparql-base-url-history (list sparql-default-base-url))
-(defvar sqarql-last-query (string))
+(defvar sqarql-last-query ""
+  "Text of last query sent (including any auto PREFIX statements.")
 
 (defun sparql-set-base-url (new-url)
   "Set the base URL for queries."
@@ -227,7 +229,7 @@ SPARQL query."
     (dolist (pair sparql-auto-prefixes)
       (setq str
 	    (concat str
-		    (concat "PREFIX " (car pair) " " (cdr pair) "\n")
+		    (concat "PREFIX " (car pair) " <" (cdr pair) ">\n")
 		    )))
     str))
 
@@ -272,9 +274,18 @@ their prefixes in region."
     (set-marker endm nil)
     ))
 
+(defun sparql-replace-uri-with-prefix-buffer ()
+  "Replace known uris (from `sparql-auto-prefixes') with
+their prefixes throughout current buffer (even if read-only)."
+  (interactive)
+  (let ((ro buffer-read-only))
+    (setq buffer-read-only nil)
+    (sparql-replace-uri-with-prefix-region (point-min) (point-max))
+    (setq buffer-read-only ro)))
+
 (defun sparql-replace-prefix-with-uri-region (begin end)
-  "Replace known uris (from `sparql-auto-prefixes') with 
-their prefixes in region."
+  "Replace known prefixes (from `sparql-auto-prefixes') with 
+their uris in region."
   (interactive "r")
   (let* ((endm (make-marker)))
     (set-marker endm end)
@@ -286,6 +297,21 @@ their prefixes in region."
 	))
     (set-marker endm nil)
     ))
+
+(defun sparql-replace-prefix-with-uri-buffer ()
+  "Replace known prefixes (from `sparql-auto-prefixes') with
+their uris throughout current buffer (even if read-only)."
+  (interactive)
+  (let ((ro buffer-read-only))
+    (setq buffer-read-only nil)
+    (sparql-replace-prefix-with-uri-region (point-min) (point-max))
+    (setq buffer-read-only ro)))
+
+(defun sparql-toggle-overwrite-results ()
+  "Toggle result buffer from overwrite to append and vice versa."
+  (interactive)
+  (setq sparql-overwrite-results (not sparql-overwrite-results))
+  sparql-overwrite-results)
 
 (defun sparql-query-region (&optional synch)
   "Submit the active region as a query to a SPARQL HTTP endpoint.
@@ -309,7 +335,7 @@ asynchronously."
 	(if (not (boundp 'sparql-use-auto-prefixes))
 	    (setq sparql-use-auto-prefixes
 		  sparql-default-use-auto-prefixes))
-	(if sparql-clear-results-between-queries
+	(if sparql-overwrite-results
 	    (delete-region (point-min) (point-max)))
         (sparql-execute-query query url format synch)))
     (view-buffer-other-window sparql-results-buffer)
@@ -418,14 +444,25 @@ definition of end of comment.")
     map)
   "Keymap for `sparql-mode'.")
 
+(defvar sparql-result-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-p") 'sparql-replace-uri-with-prefix-buffer)
+    (define-key map (kbd "C-c C-S-p") 'sparql-replace-uri-with-prefix-region)
+    (define-key map (kbd "C-c C-M-p") 'sparql-replace-prefix-with-uri-buffer)
+    (define-key map (kbd "C-c C-M-S-p") 'sparql-replace-prefix-with-uri-region)      (define-key map (kbd "C-c C-o") 'sparql-toggle-overwrite-results)
+    map)
+  "Keymap for `sparql-result-mode'.")
+
 (defvar ac-source-sparql-mode
   `((candidates . ,sparql--keywords)))
 
-(define-derived-mode sparql-result-mode read-only-mode "SPARQL[waiting]"
-  "Major mode to hold the result from the SPARQL-queries."
-  :group 'sparql-result-mode)
-
 ;;;###autoload
+(define-derived-mode sparql-result-mode read-only-mode "SPARQL[waiting]"
+  "Major mode to hold the result from the SPARQL-queries.
+\\{sparql-result-mode-map}"
+  :group 'sparql-result-mode
+  )
+
 (define-derived-mode sparql-mode prog-mode "SPARQL"
   "Major mode for SPARQL-queries.
 \\{sparql-mode-map}"
