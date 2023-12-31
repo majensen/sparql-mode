@@ -205,9 +205,15 @@ SPARQL query."
     (with-current-buffer output-buffer
       (let ((buffer-read-only nil))
         (if (and (<= 200 response) (<= response 299))
-            (url-insert results-buffer)
-          (insert-buffer-substring results-buffer))
-        (setq mode-name "SPARQL[finished]")))))
+	    (progn
+	      (if sparql-overwrite-results
+		  (delete-region (point-min) (point-max))
+		(goto-char (point-max))
+		(insert "\n----\n"))
+	      (url-insert results-buffer)
+	      (goto-char (point-max)))
+	  (insert-buffer-substring results-buffer))
+	(setq mode-name "SPARQL[finished]")))))
 
 (defmacro when-emacs<25.1 (&rest body)
   (when (version< emacs-version "25.1")
@@ -335,9 +341,7 @@ asynchronously."
 	(if (not (boundp 'sparql-use-auto-prefixes))
 	    (setq sparql-use-auto-prefixes
 		  sparql-default-use-auto-prefixes))
-	(if sparql-overwrite-results
-	    (delete-region (point-min) (point-max)))
-        (sparql-execute-query query url format synch)))
+	(sparql-execute-query query url format synch)))
     (view-buffer-other-window sparql-results-buffer)
     (other-window -1)))
 
