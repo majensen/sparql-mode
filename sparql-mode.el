@@ -343,20 +343,19 @@ asynchronously."
 	    (setq sparql-use-auto-prefixes
 		  sparql-default-use-auto-prefixes))
 	(sparql-execute-query query url format synch)
-	;;; this point-max wants to report the max point before the
-	;;; insertion already performed by sparql-handle-results in
-	;;; sparql-execute-query. Can't figure it out.
-	(setq pmx (point-max))
 	))
-    (let ((srb sparql-results-buffer))
-      ;;; why does the following trash the var 'sparql-results-buffer'?
-      (view-buffer-other-window sparql-results-buffer)
-      (if (not sparql-overwrite-results)
-	  (let ((win (get-buffer-window srb)))
-	    ;;; setting window point to 5x(point-max), b/c of issue
-	    ;;; in prev comment.
-	    (set-window-point win (* pmx 5)))))
+    (view-buffer-other-window sparql-results-buffer)
     (other-window -1)))
+
+(defun sparql-max-scroll (a &optional b c)
+  "Advice for `url-insert' to scroll to end of window, when not overwriting
+results buffer."
+  (if (and (boundp 'sparql-overwrite-results)
+	   (not sparql-overwrite-results))
+      (let ((win (get-buffer-window (current-buffer))))
+	(set-window-point win (point-max)))))
+
+(advice-add 'url-insert :after #'sparql-max-scroll)
 
 (defconst sparql--keywords
   '("ADD" "ALL" "AS" "ASC" "ASK"
