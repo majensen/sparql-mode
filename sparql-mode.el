@@ -211,7 +211,7 @@ SPARQL query."
 		(goto-char (point-max))
 		(insert "\n----\n"))
 	      (url-insert results-buffer)
-	      (goto-char (point-max)))
+	      )
 	  (insert-buffer-substring results-buffer))
 	(setq mode-name "SPARQL[finished]")))))
 
@@ -329,7 +329,8 @@ asynchronously."
          (end (if (region-active-p) (region-end) (point-max)))
          (query (buffer-substring-no-properties beg end))
          (url (sparql-get-base-url))
-         (format (sparql-get-format)))
+         (format (sparql-get-format))
+	 (pmx))
     (unless (and sparql-results-buffer
                  (buffer-live-p sparql-results-buffer))
       (setq sparql-results-buffer (get-buffer-create
@@ -341,8 +342,20 @@ asynchronously."
 	(if (not (boundp 'sparql-use-auto-prefixes))
 	    (setq sparql-use-auto-prefixes
 		  sparql-default-use-auto-prefixes))
-	(sparql-execute-query query url format synch)))
-    (view-buffer-other-window sparql-results-buffer)
+	(sparql-execute-query query url format synch)
+	;;; this point-max wants to report the max point before the
+	;;; insertion already performed by sparql-handle-results in
+	;;; sparql-execute-query. Can't figure it out.
+	(setq pmx (point-max))
+	))
+    (let ((srb sparql-results-buffer))
+      ;;; why does the following trash the var 'sparql-results-buffer'?
+      (view-buffer-other-window sparql-results-buffer)
+      (if (not sparql-overwrite-results)
+	  (let ((win (get-buffer-window srb)))
+	    ;;; setting window point to 5x(point-max), b/c of issue
+	    ;;; in prev comment.
+	    (set-window-point win (* pmx 5)))))
     (other-window -1)))
 
 (defconst sparql--keywords
